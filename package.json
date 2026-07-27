@@ -1,0 +1,19 @@
+{
+  "name": "grand-line-online-api",
+  "version": "1.0.0",
+  "description": "REST API for the Grand Line Online mod console - character sheets, training/points, deck, move calculator, traps.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
