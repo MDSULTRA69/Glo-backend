@@ -39,9 +39,19 @@ function makeTestDb() {
     CREATE TABLE traps (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       waid TEXT NOT NULL, spar_id INTEGER, move_name TEXT NOT NULL, move_class TEXT NOT NULL,
+      coating TEXT NOT NULL DEFAULT 'none', is_devil_fruit_move INTEGER NOT NULL DEFAULT 0,
+      stamina_cost INTEGER,
       submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
       revealed INTEGER NOT NULL DEFAULT 0, incoming_class TEXT,
       mod_ruling TEXT, mod_waid TEXT, ruled_at TEXT
+    );
+    CREATE TABLE bonus_buffs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      waid TEXT NOT NULL, label TEXT NOT NULL,
+      hp INTEGER NOT NULL DEFAULT 0, str INTEGER NOT NULL DEFAULT 0,
+      def INTEGER NOT NULL DEFAULT 0, spd INTEGER NOT NULL DEFAULT 0,
+      haki_affinity_pct INTEGER NOT NULL DEFAULT 0, source TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 

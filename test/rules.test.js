@@ -4,7 +4,65 @@ const assert = require("node:assert/strict");
 const { computeStaminaCost, tierDiscountFraction, observationReadSucceeds } = require("../src/rules/stamina");
 const { resolveMoveDamage, checkGatlingLimit } = require("../src/rules/damage");
 const { hakiSubLevelFromPoints, rankTierFromXp } = require("../src/rules/progression");
+const { raceBonus, sumBuffs, computeEffectiveStats } = require("../src/rules/stats");
 const C = require("../src/rules/constants");
+
+// ---------- rules/stats.js: race table + bonus buffs ----------
+
+test("every race in the Guidebook Section 2 table is present", () => {
+  const expected = [
+    "Human", "Fishman", "Merfolk", "Giant", "Mink", "Skypiean",
+    "Long-Arm / Long-Leg Tribe", "Three-Eye Clan", "Celestial Dragon",
+    "Snakeneck Tribe", "Tontatta Dwarf", "Kuja Tribe", "Lunarian",
+  ];
+  for (const name of expected) assert.ok(C.RACE_TABLE[name], `Missing race: ${name}`);
+  assert.equal(Object.keys(C.RACE_TABLE).length, expected.length);
+});
+
+test("race bonus spot checks against the source table", () => {
+  assert.deepEqual(
+    { hp: C.RACE_TABLE.Giant.hp, str: C.RACE_TABLE.Giant.str, def: C.RACE_TABLE.Giant.def, spd: C.RACE_TABLE.Giant.spd },
+    { hp: 50, str: 25, def: 15, spd: -15 }
+  );
+  assert.equal(C.RACE_TABLE["Three-Eye Clan"].hakiAffinityPct, 25);
+  assert.equal(C.RACE_TABLE.Mink.hakiAffinityPct, 10);
+});
+
+test("fishman/merfolk SPD swaps to the water value when inWater is true", () => {
+  const land = raceBonus("Fishman", { inWater: false });
+  const water = raceBonus("Fishman", { inWater: true });
+  assert.equal(land.spd, -5);
+  assert.equal(water.spd, 15);
+});
+
+test("unknown/unset race resolves to all-zero bonuses instead of throwing", () => {
+  const r = raceBonus(undefined);
+  assert.equal(r.known, false);
+  assert.equal(r.str, 0);
+});
+
+test("bonus buffs (special spins) sum and stack with race + pool", () => {
+  const char = { race: "Human", str_alloc: 10, def_alloc: 5, spd_alloc: 0 };
+  const buffs = [
+    { str: 5, def: 0, spd: 3, hp: 0, haki_affinity_pct: 0 },
+    { str: 2, def: 1, spd: 0, hp: 10, haki_affinity_pct: 5 },
+  ];
+  const stats = computeEffectiveStats(char, buffs);
+  assert.equal(stats.str, 10 + 0 + 5 + 2); // pool + race(0) + buffs
+  assert.equal(stats.def, 5 + 0 + 0 + 1);
+  assert.equal(stats.spd, 0 + 0 + 3 + 0);
+  assert.equal(stats.hp, 100 + 0 + 10);
+  assert.equal(stats.hakiAffinityPct, 0 + 5);
+});
+
+test("effective stats fold in a real race's bonuses", () => {
+  const char = { race: "Lunarian", str_alloc: 20, def_alloc: 20, spd_alloc: 20 };
+  const stats = computeEffectiveStats(char, []);
+  assert.equal(stats.str, 20 + 20);
+  assert.equal(stats.def, 20 + 25);
+  assert.equal(stats.spd, 20 + 10);
+  assert.equal(stats.hp, 100 + 20);
+});
 
 test("tier discount: gap 0 = no discount", () => {
   assert.equal(tierDiscountFraction(1, "E"), 0);
@@ -111,6 +169,24 @@ test("guard halves damage, dodge-failed does not reduce it", () => {
   const dodgeFailed = resolveMoveDamage({ moveClass: "E", characterTier: 1, defenderReaction: "dodge-failed" });
   assert.equal(guarded.finalDamage, 5);
   assert.equal(dodgeFailed.finalDamage, 10);
+});
+
+test("attacker STR adds flat to damage, defender DEF subtracts flat, before Guard/Dodge", () => {
+  const r = resolveMoveDamage({ moveClass: "E", characterTier: 1, attackerStr: 8, defenderDef: 3 });
+  // 10 hit-count + 8 STR - 3 DEF = 15
+  assert.equal(r.finalDamage, 15);
+  assert.equal(r.breakdown.afterDef, 15);
+});
+
+test("defender DEF cannot push damage below zero", () => {
+  const r = resolveMoveDamage({ moveClass: "E", characterTier: 1, attackerStr: 0, defenderDef: 999 });
+  assert.equal(r.finalDamage, 0);
+});
+
+test("dodge-success reaction zeroes damage explicitly", () => {
+  const r = resolveMoveDamage({ moveClass: "A", characterTier: 5, defenderReaction: "dodge-success" });
+  assert.equal(r.finalDamage, 0);
+  assert.equal(r.breakdown.reactionNote, "Dodge succeeded — no damage");
 });
 
 test("devil fruit clone deals exactly half damage", () => {

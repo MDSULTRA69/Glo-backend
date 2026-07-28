@@ -6,6 +6,7 @@ const training = require("../src/commands/training");
 const deckCmd = require("../src/commands/deck");
 const trapsCmd = require("../src/commands/traps");
 const moveCmd = require("../src/commands/move");
+const buffsCmd = require("../src/commands/buffs");
 
 test("full async lifecycle: create -> award -> allocate -> rank up -> deck -> move -> trap", async () => {
   const db = makeTestDb();
@@ -71,6 +72,49 @@ test("full async lifecycle: create -> award -> allocate -> rank up -> deck -> mo
 
   const ruled = await trapsCmd.ruleOnTrap(db, traps[0].id, "mod-waid", "failed");
   assert.equal(ruled.mod_ruling, "failed");
+});
+
+test("submitting a trap computes and stores its Stamina cost from the class/coating tables", async () => {
+  const db = makeTestDb();
+  const waid = "trapper-1";
+  await training.ensureCharacter(db, waid, "Trapper");
+  await db.run("UPDATE characters SET rank_xp = 4000000 WHERE waid = ?", [waid]); // Tier 6
+
+  const result = await trapsCmd.submitTrap(db, waid, 1, { moveName: "Rokuogan", moveClass: "SS", coating: "armament" });
+  // Tier 6 SS base cost 30 (no discount, top class) + Haki surcharge 20 = 50
+  assert.equal(result.staminaCost, 50);
+
+  const [stored] = await trapsCmd.listTraps(db, waid, 1);
+  assert.equal(stored.stamina_cost, 50);
+});
+
+test("bonus buffs (special spins) can be added, listed, and removed on a character", async () => {
+  const db = makeTestDb();
+  const waid = "spin-winner";
+  await training.ensureCharacter(db, waid, "Spin Winner");
+
+  const afterAdd = await buffsCmd.addBuff(db, waid, { label: "Special Spin — New Year Buff", str: 10, spd: 5 });
+  assert.equal(afterAdd.length, 1);
+  assert.equal(afterAdd[0].str, 10);
+
+  const afterRemove = await buffsCmd.removeBuff(db, waid, afterAdd[0].id);
+  assert.equal(afterRemove.length, 0);
+});
+
+test("move calculator pulls the defender's effective DEF when a defenderWaid is given", async () => {
+  const db = makeTestDb();
+  const attackerWaid = "atk-1", defenderWaid = "def-1";
+  await training.ensureCharacter(db, attackerWaid, "Attacker");
+  await training.ensureCharacter(db, defenderWaid, "Defender");
+  await db.run("UPDATE characters SET rank_xp = 25000, str_alloc = 5 WHERE waid = ?", [attackerWaid]);
+  await db.run("UPDATE characters SET rank_xp = 25000, def_alloc = 4 WHERE waid = ?", [defenderWaid]);
+
+  const result = await moveCmd.resolveDeclaredMove(db, attackerWaid, {
+    moveName: "Jab", moveClass: "E", defenderWaid,
+  });
+  // 10 hit-count + 5 STR - 4 DEF = 11
+  assert.equal(result.damage.finalDamage, 11);
+  assert.equal(result.defenderName, "Defender");
 });
 
 test("move calculator works with manualTier and no character (public calculator use)", async () => {
