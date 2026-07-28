@@ -55,8 +55,21 @@ CREATE TABLE IF NOT EXISTS characters (
   has_conquerors_haki BOOLEAN NOT NULL DEFAULT FALSE,
   unique_stat TEXT,
   unique_bonus INTEGER NOT NULL DEFAULT 0,
+  character_password TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Add character_password column if it doesn't exist yet (safe on existing DBs)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'characters' AND column_name = 'character_password'
+  ) THEN
+    ALTER TABLE characters ADD COLUMN character_password TEXT;
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS deck_slots (
   id SERIAL PRIMARY KEY,
@@ -84,12 +97,31 @@ CREATE TABLE IF NOT EXISTS traps (
   spar_id INTEGER,
   move_name TEXT NOT NULL,
   move_class TEXT NOT NULL,
+  coating TEXT NOT NULL DEFAULT 'none',
+  is_devil_fruit_move BOOLEAN NOT NULL DEFAULT FALSE,
+  stamina_cost INTEGER,
   submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
   revealed BOOLEAN NOT NULL DEFAULT FALSE,
   incoming_class TEXT,
   mod_ruling TEXT,
   mod_waid TEXT,
   ruled_at TIMESTAMP
+);
+
+-- Any buff that isn't the character's fixed race bonus: race-roll "special
+-- spin" buffs, event buffs, or any other one-off mod-granted stat bump.
+-- These stack on top of the Stat Pool + race bonuses (see rules/stats.js).
+CREATE TABLE IF NOT EXISTS bonus_buffs (
+  id SERIAL PRIMARY KEY,
+  waid TEXT NOT NULL REFERENCES characters(waid) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  hp INTEGER NOT NULL DEFAULT 0,
+  str INTEGER NOT NULL DEFAULT 0,
+  def INTEGER NOT NULL DEFAULT 0,
+  spd INTEGER NOT NULL DEFAULT 0,
+  haki_affinity_pct INTEGER NOT NULL DEFAULT 0,
+  source TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS mods (
