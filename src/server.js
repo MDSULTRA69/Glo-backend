@@ -186,7 +186,12 @@ app.post("/api/characters/:waid/ensure-password", requireMod, wrap(async (req, r
   res.json({ character_password: pw });
 }));
 
-// ---------- points / training (mod-gated) ----------
+// ---------- points / training ----------
+// Awarding Points/Rank XP is the NPC moderator's job (that's the thing being
+// handed out from outside the game). Allocating already-banked Points into
+// Armament/Observation is the character's own choice — "leveling up" — so
+// that's open to the character owner (their password) as well as the mod,
+// which keeps that day-to-day busywork off the NPC.
 
 app.post("/api/characters/:waid/award", requireMod, wrap(async (req, res) => {
   const { amount, reason } = req.body;
@@ -194,7 +199,7 @@ app.post("/api/characters/:waid/award", requireMod, wrap(async (req, res) => {
   res.json(summary);
 }));
 
-app.post("/api/characters/:waid/allocate", requireMod, wrap(async (req, res) => {
+app.post("/api/characters/:waid/allocate", requireModOrCharacterOwner, wrap(async (req, res) => {
   const { amount, track } = req.body;
   const summary = await training.allocatePoints(db, req.params.waid, amount, track);
   res.json(summary);
