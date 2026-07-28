@@ -1,7 +1,18 @@
+const { computeStaminaCost } = require("../rules/stamina");
+const { rankTierFromXp } = require("../rules/progression");
+
 const MAX_TRAPS_PER_SPAR = 3;
 const CLASSES = ["E", "D", "C", "B", "A", "S", "SS"];
 
-async function submitTrap(db, waid, sparId, { moveName, moveClass }) {
+// A Trap is one of the character's own 15 Deck moves, pre-submitted to the
+// mod (Part 10, "2FA & Traps"). It's still a declared move when it
+// eventually resolves on reveal, so it costs Stamina exactly like throwing
+// that same move normally would — base cost by class, tier-discounted,
+// plus the Haki/Devil-Fruit surcharge if the trapped move carries one.
+// Fatigue isn't included here since it depends on how many moves have
+// already been thrown by the time it's revealed, which isn't known yet
+// at submission time.
+async function submitTrap(db, waid, sparId, { moveName, moveClass, coating = "none", isDevilFruitMove = false }) {
   const countRow = await db.get(
     "SELECT COUNT(*) as n FROM traps WHERE waid = ? AND spar_id = ?",
     [waid, sparId]
@@ -10,11 +21,24 @@ async function submitTrap(db, waid, sparId, { moveName, moveClass }) {
   if (count >= MAX_TRAPS_PER_SPAR) {
     throw new Error(`Already submitted ${MAX_TRAPS_PER_SPAR} Traps for this fight — that's the max.`);
   }
+
+  const char = await db.get("SELECT * FROM characters WHERE waid = ?", [waid]);
+  if (!char) throw new Error("No character found for this player.");
+  const tier = rankTierFromXp(char.rank_xp).tier;
+
+  const stamina = computeStaminaCost({
+    characterTier: tier,
+    moveClass,
+    priorMovesThrown: 0,
+    coating,
+    isDevilFruitMove,
+  });
+
   await db.run(
-    "INSERT INTO traps (waid, spar_id, move_name, move_class) VALUES (?, ?, ?, ?)",
-    [waid, sparId, moveName, moveClass]
+    "INSERT INTO traps (waid, spar_id, move_name, move_class, coating, is_devil_fruit_move, stamina_cost) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [waid, sparId, moveName, moveClass, coating, isDevilFruitMove, stamina.total]
   );
-  return count + 1;
+  return { count: count + 1, staminaCost: stamina.total, staminaBreakdown: stamina.breakdown };
 }
 
 async function listTraps(db, waid, sparId) {
