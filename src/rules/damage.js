@@ -13,7 +13,9 @@ const C = require("./constants");
  * @param {number} opts.characterTier - 1-6 (must be able to legally use moveClass)
  * @param {"none"|"armament"|"conquerors"} [opts.coating="none"]
  * @param {boolean} [opts.isClone=false] - Devil Fruit clone/duplicate, halves output
- * @param {"none"|"guard"|"dodge-failed"} [opts.defenderReaction="none"]
+ * @param {number} [opts.attackerStr=0] - Attacker's effective STR (Stat Pool + race + buffs). Section 2: "STR affects damage dealt."
+ * @param {number} [opts.defenderDef=0] - Defender's effective DEF (Stat Pool + race + buffs). Section 2: "DEF reduces damage taken."
+ * @param {"none"|"guard"|"dodge-failed"|"dodge-success"} [opts.defenderReaction="none"]
  */
 function resolveMoveDamage(opts) {
   const {
@@ -21,6 +23,8 @@ function resolveMoveDamage(opts) {
     characterTier,
     coating = "none",
     isClone = false,
+    attackerStr = 0,
+    defenderDef = 0,
     defenderReaction = "none",
   } = opts;
 
@@ -49,19 +53,30 @@ function resolveMoveDamage(opts) {
     }
   }
 
-  let subtotal = hitCountDamage + coatingBonus;
+  // Section 2 states STR adds to damage dealt and DEF reduces damage taken,
+  // but no source table gives an exact ratio beyond the class hit-count and
+  // coating flat bonus (the Part 4 worked examples never factor Stat Pool
+  // points into damage either). This applies both as a direct 1:1 flat
+  // adjustment — the simplest reading of the plain-text rule. Flag this to
+  // the group and adjust here if a different ratio gets confirmed.
+  let subtotal = hitCountDamage + coatingBonus + attackerStr;
 
   if (isClone) {
     subtotal = Math.floor(subtotal * C.CLONE_DAMAGE_MULTIPLIER);
   }
 
-  let final = subtotal;
+  const afterDef = Math.max(0, subtotal - defenderDef);
+
+  let final = afterDef;
   let reactionNote = null;
   if (defenderReaction === "guard") {
-    final = Math.floor(subtotal / 2);
+    final = Math.floor(afterDef / 2);
     reactionNote = "Guarded — half damage";
   } else if (defenderReaction === "dodge-failed") {
     reactionNote = "Dodge attempted and failed — full damage";
+  } else if (defenderReaction === "dodge-success") {
+    final = 0;
+    reactionNote = "Dodge succeeded — no damage";
   }
 
   return {
@@ -72,9 +87,12 @@ function resolveMoveDamage(opts) {
       coating,
       coatingBonus,
       coatingNote,
+      attackerStr,
       isClone,
       cloneMultiplierApplied: isClone ? C.CLONE_DAMAGE_MULTIPLIER : null,
-      subtotalBeforeReaction: subtotal,
+      subtotalBeforeDef: subtotal,
+      defenderDef,
+      afterDef,
       defenderReaction,
       reactionNote,
     },

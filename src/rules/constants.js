@@ -120,8 +120,37 @@ const HAKI_SUBLEVEL_JUMPS = [
   { from: "A3", to: "S1", armament: 10000 },
 ].map((row) => ({ ...row, observation: Math.round(row.armament * 1.5) }));
 
+// ---------------------------------------------------------------------------
+// Race Table — Guidebook Section 2. Every flat number below is transcribed
+// directly from that table. Two races (Fishman, Merfolk) have a SPD value
+// that differs on land vs. in water; both are stored (spd / spdWater).
+// "special" is a plain-text flag for the race's situational mechanic that
+// isn't a flat stat (e.g. Giant's damage-class-up, Snakeneck's guard
+// penalty) — these aren't auto-applied by the damage engine since they're
+// conditional/narrative, but every API response that returns a character's
+// race also surfaces this note so a mod doesn't have to re-check the PDF
+// mid-fight.
+const RACE_TABLE = {
+  "Human": { rarity: "Common", hp: 0, str: 0, def: 0, spd: 0, hakiAffinityPct: 0, special: "+10% XP from all sources (adaptability)." },
+  "Fishman": { rarity: "Common", hp: 20, str: 15, def: 5, spd: -5, spdWater: 15, hakiAffinityPct: 0, special: "Bonus STR is doubled for underwater fights." },
+  "Merfolk": { rarity: "Uncommon", hp: 10, str: -5, def: -5, spd: 5, spdWater: 20, hakiAffinityPct: 0, special: "Fastest swimmers; land combat is a weak spot." },
+  "Giant": { rarity: "Rare", hp: 50, str: 25, def: 15, spd: -15, hakiAffinityPct: 0, special: "Hits count as one class higher for damage purposes." },
+  "Mink": { rarity: "Uncommon", hp: 5, str: 10, def: 0, spd: 15, hakiAffinityPct: 10, special: "Electro training grants faster Haki growth." },
+  "Skypiean": { rarity: "Uncommon", hp: -10, str: -5, def: -5, spd: 20, hakiAffinityPct: 0, special: "+15% evade vs. ranged/projectile attacks." },
+  "Long-Arm / Long-Leg Tribe": { rarity: "Uncommon", hp: 0, str: 10, def: 0, spd: 0, hakiAffinityPct: 0, special: "First strike each fight always lands (reach advantage)." },
+  "Three-Eye Clan": { rarity: "Very Rare", hp: -10, str: 0, def: -10, spd: 0, hakiAffinityPct: 25, special: "Observation Haki starts one tier higher than rank allows." },
+  "Celestial Dragon": { rarity: "Rarest", hp: 30, str: 10, def: 20, spd: -10, hakiAffinityPct: 0, special: "World Government access & fear-based social leverage; despised by Pirate/Revolutionary NPCs and factions." },
+  "Snakeneck Tribe": { rarity: "Common", hp: 0, str: 5, def: 0, spd: 10, hakiAffinityPct: 0, special: "The first Guard or Dodge an opponent attempts each fight rolls at a -5 penalty." },
+  "Tontatta Dwarf": { rarity: "Rare", hp: -15, str: 5, def: 5, spd: 25, hakiAffinityPct: 0, special: "Adrenaline Rush: dropping below 30% HP grants a one-time +30 STR for the rest of the fight." },
+  "Kuja Tribe": { rarity: "Rare", hp: 0, str: 5, def: 0, spd: 10, hakiAffinityPct: 15, special: "Natural-Born Haki: starts play with Observation Haki already trained to Tier 1 (E-class) for free; may be GM-gated (Amazon Lily)." },
+  "Lunarian": { rarity: "Rarest", hp: 20, str: 20, def: 25, spd: 10, hakiAffinityPct: 0, special: "Combustion Awakening: dropping below 50% HP grants a one-time +15 STR and +15 DEF for the rest of the fight; natural flight; near-extinct, GM discretion on consequences." },
+};
+const RACE_NAMES = Object.keys(RACE_TABLE);
+
 module.exports = {
   CLASSES,
+  RACE_TABLE,
+  RACE_NAMES,
   CLASS_INDEX,
   TIER_TOP_CLASS,
   BASE_MOVE_COST,
