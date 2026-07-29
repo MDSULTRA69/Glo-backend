@@ -10,7 +10,7 @@ const trapsCmd = require("./commands/traps");
 const moveCmd = require("./commands/move");
 const buffsCmd = require("./commands/buffs");
 const { computeEffectiveStats } = require("./rules/stats");
-const { RACE_TABLE } = require("./rules/constants");
+const { RACE_TABLE, BATTLE_AWARDS_BY_TIER } = require("./rules/constants");
 
 const app = express();
 app.use(cors());
@@ -100,6 +100,10 @@ app.get("/api/races", wrap(async (req, res) => {
   res.json(RACE_TABLE);
 }));
 
+app.get("/api/battle-awards", wrap(async (req, res) => {
+  res.json(BATTLE_AWARDS_BY_TIER);
+}));
+
 // ---------- characters ----------
 
 // List all — mod only
@@ -130,9 +134,10 @@ app.get("/api/characters/:waid", requireModOrCharacterOwner, wrap(async (req, re
   const summary = await training.getPointsSummary(db, req.params.waid);
   const buffs = await buffsCmd.listBuffs(db, req.params.waid);
   const effectiveStats = computeEffectiveStats(char, buffs);
+  const trainingTracks = await training.listTrainingTracks(db, req.params.waid);
   // Expose the password only to the NPC mod so they can share it with the player
   const isMod = isModRequest(req);
-  const data = { ...char, deck, summary, buffs, effectiveStats };
+  const data = { ...char, deck, summary, buffs, effectiveStats, trainingTracks };
   if (!isMod) delete data.character_password; // character-mode sees the sheet but not the raw PW
   res.json(data);
 }));
@@ -146,9 +151,16 @@ app.patch("/api/characters/:waid", requireMod, wrap(async (req, res) => {
   for (const key of allowed) {
     if (key in req.body) { sets.push(`${key} = ?`); params.push(req.body[key]); }
   }
-  if (!sets.length) return res.json(await training.getCharacter(db, req.params.waid));
-  params.push(req.params.waid);
-  await db.run(`UPDATE characters SET ${sets.join(", ")} WHERE waid = ?`, params);
+  if (sets.length) {
+    params.push(req.params.waid);
+    await db.run(`UPDATE characters SET ${sets.join(", ")} WHERE waid = ?`, params);
+  }
+  // Toggling Conqueror's Haki on auto-provisions its training track, so a
+  // mod doesn't need a second click before the player can start banking
+  // Points into it.
+  if (req.body.has_conquerors_haki === true) {
+    await training.createTrainingTrack(db, req.params.waid, "conquerors", null).catch(() => {});
+  }
   res.json(await training.getCharacter(db, req.params.waid));
 }));
 
@@ -209,6 +221,44 @@ app.post("/api/characters/:waid/rankxp", requireMod, wrap(async (req, res) => {
   const { amount } = req.body;
   await db.run("UPDATE characters SET rank_xp = rank_xp + ? WHERE waid = ?", [amount, req.params.waid]);
   res.json(await training.getPointsSummary(db, req.params.waid));
+}));
+
+// ---------- weapon / style / conqueror's coating training tracks ----------
+// Creating a brand-new track is a mod/story-beat action (Part 8). Banking
+// Points into a track that already exists is the character's own call —
+// open to the mod OR the character's own password — and always additive:
+// there's no route that removes Points from a track or deletes the row.
+
+app.post("/api/characters/:waid/training-tracks", requireMod, wrap(async (req, res) => {
+  const { trackType, trackName } = req.body;
+  const tracks = await training.createTrainingTrack(db, req.params.waid, trackType, trackName);
+  res.json(tracks);
+}));
+
+app.post("/api/characters/:waid/training-tracks/:trackId/allocate", requireModOrCharacterOwner, wrap(async (req, res) => {
+  const { amount } = req.body;
+  const tracks = await training.allocateToTrainingTrack(db, req.params.waid, parseInt(req.params.trackId, 10), amount);
+  res.json(tracks);
+}));
+
+// ---------- stat pool self-allocation ----------
+// Additive only and permanent, same reasoning as training tracks above —
+// open to the mod OR the character's own password.
+
+app.post("/api/characters/:waid/allocate-stats", requireModOrCharacterOwner, wrap(async (req, res) => {
+  const { str, def, spd } = req.body;
+  const char = await training.allocateStatPool(db, req.params.waid, { str, def, spd });
+  res.json(char);
+}));
+
+// ---------- money (Berries) ----------
+// Mod-awarded only, same additive pattern as Points/Rank XP — no route
+// reduces or resets it.
+
+app.post("/api/characters/:waid/award-money", requireMod, wrap(async (req, res) => {
+  const { amount, reason } = req.body;
+  const result = await training.awardMoney(db, req.params.waid, amount, reason);
+  res.json(result);
 }));
 
 // ---------- bonus buffs (mod-gated) ----------

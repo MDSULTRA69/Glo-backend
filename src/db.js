@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS characters (
   unique_stat TEXT,
   unique_bonus INTEGER NOT NULL DEFAULT 0,
   character_password TEXT,
+  money_banked INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -70,6 +71,36 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Add money_banked column if it doesn't exist yet (safe on existing DBs)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'characters' AND column_name = 'money_banked'
+  ) THEN
+    ALTER TABLE characters ADD COLUMN money_banked INTEGER NOT NULL DEFAULT 0;
+  END IF;
+END
+$$;
+
+-- Weapon / Style / Conqueror's Coating training tracks. Each row is one
+-- named track a character is actively training (e.g. weapon "Single-Blade",
+-- style "Karate", or the single "conquerors" track). Creating a brand-new
+-- track is a mod action (Part 8: "Points can't be spent to start training a
+-- brand-new weapon category, Haki form, or Style from scratch — picking up
+-- something new is still a training/story beat"). Once a track exists,
+-- Points banked into it (points_banked below) only ever go up — there's no
+-- endpoint that subtracts or deletes a training_tracks row, so nothing a
+-- character banks here can be taken back.
+CREATE TABLE IF NOT EXISTS training_tracks (
+  id SERIAL PRIMARY KEY,
+  waid TEXT NOT NULL REFERENCES characters(waid) ON DELETE CASCADE,
+  track_type TEXT NOT NULL, -- 'weapon' | 'style' | 'conquerors'
+  track_name TEXT, -- e.g. "Single-Blade", "Karate" — NULL for the singleton 'conquerors' track
+  points_banked INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS deck_slots (
   id SERIAL PRIMARY KEY,
