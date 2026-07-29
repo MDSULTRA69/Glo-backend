@@ -147,6 +147,49 @@ const RACE_TABLE = {
 };
 const RACE_NAMES = Object.keys(RACE_TABLE);
 
+// Weapon Training — Points to Next Class (Part 8). Applies individually to
+// each weapon category a character trains (e.g. Single-Blade and Firearms
+// are tracked separately, drawn from the same shared Points pool).
+const WEAPON_TRAINING_JUMPS = [
+  { from: "E", to: "D", points: 3000 },
+  { from: "D", to: "C", points: 5000 },
+  { from: "C", to: "B", points: 8000 },
+  { from: "B", to: "A", points: 12000 },
+  { from: "A", to: "S/SS", points: 18000 },
+];
+
+// Style Training — Points to Next Class (Part 8). Cheaper than weapons at
+// every step, since Styles have no rarity roll.
+const STYLE_TRAINING_JUMPS = [
+  { from: "E", to: "D", points: 2500 },
+  { from: "D", to: "C", points: 4000 },
+  { from: "C", to: "B", points: 6500 },
+  { from: "B", to: "A", points: 10000 },
+  { from: "A", to: "S/SS", points: 15000 },
+];
+
+// Conqueror's Coating Training (Part 6/8). Only available to a character
+// who rolled Conqueror's Haki at creation. Reaching the Rank Tier is a
+// prerequisite, not a substitute, for training it — both gates must clear.
+// Bonus values match CONQUERORS_COATING_FLAT_BONUS above.
+const CONQUERORS_COATING_TRAINING = {
+  aClass: { pointsRequired: 15000, tierRequired: 5, bonus: 25 },
+  ssClass: { pointsRequired: 50000, tierRequired: 6, bonus: 35 }, // cumulative from unlock (15,000 + 35,000 additional)
+};
+
+// Rank XP / Points / Berries awarded per real battle (story fights, staked
+// PvP, events), by the battle's Rank Tier (Part 8). Sparring uses the much
+// smaller flat rate in the Guidebook (100 Rank XP + 20 Points, no Berries),
+// handled separately — this table is only for real battles.
+const BATTLE_AWARDS_BY_TIER = {
+  1: { rankXp: 800, points: 320, berries: 8000 },
+  2: { rankXp: 2500, points: 470, berries: 20000 },
+  3: { rankXp: 6000, points: 690, berries: 55000 },
+  4: { rankXp: 12000, points: 1000, berries: 150000 },
+  5: { rankXp: 20000, points: 1390, berries: 400000 },
+  6: { rankXp: 35000, points: 1850, berries: 1000000 },
+};
+
 module.exports = {
   CLASSES,
   RACE_TABLE,
@@ -171,4 +214,8 @@ module.exports = {
   CLONE_DAMAGE_MULTIPLIER,
   OBSERVATION_SUB_LEVELS,
   HAKI_SUBLEVEL_JUMPS,
+  WEAPON_TRAINING_JUMPS,
+  STYLE_TRAINING_JUMPS,
+  CONQUERORS_COATING_TRAINING,
+  BATTLE_AWARDS_BY_TIER,
 };
