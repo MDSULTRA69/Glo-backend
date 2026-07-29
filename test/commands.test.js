@@ -136,3 +136,108 @@ test("gatling cap enforced through the async layer", async () => {
   assert.equal(result.gatling.cap, 3);
   assert.equal(result.gatling.allowedHits, 3);
 });
+
+// ---------- Weapon / Style / Conqueror's Coating training tracks ----------
+
+test("a mod can create a weapon training track and the character can bank Points into it", async () => {
+  const db = makeTestDb();
+  const waid = "swordsman-1";
+  await training.ensureCharacter(db, waid, "Swordsman");
+  await training.awardPoints(db, waid, 10000, "test award");
+
+  const tracks = await training.createTrainingTrack(db, waid, "weapon", "Single-Blade");
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].track_type, "weapon");
+  assert.equal(tracks[0].progress.currentLevel, "E");
+
+  const afterAlloc = await training.allocateToTrainingTrack(db, waid, tracks[0].id, 3000);
+  assert.equal(afterAlloc[0].points_banked, 3000);
+  assert.equal(afterAlloc[0].progress.currentLevel, "D"); // E->D costs exactly 3000
+
+  const char = await training.getCharacter(db, waid);
+  assert.equal(char.points_banked, 7000); // 10000 - 3000 spent
+});
+
+test("style training uses the cheaper style curve, not the weapon curve", async () => {
+  const db = makeTestDb();
+  const waid = "stylist-1";
+  await training.ensureCharacter(db, waid, "Stylist");
+  await training.awardPoints(db, waid, 5000, "test award");
+  const tracks = await training.createTrainingTrack(db, waid, "style", "Karate");
+  const afterAlloc = await training.allocateToTrainingTrack(db, waid, tracks[0].id, 2500);
+  assert.equal(afterAlloc[0].progress.currentLevel, "D"); // Style E->D only costs 2500, cheaper than weapon's 3000
+});
+
+test("allocating more Points than are banked into a training track fails", async () => {
+  const db = makeTestDb();
+  const waid = "poor-1";
+  await training.ensureCharacter(db, waid, "Poor Guy");
+  await training.awardPoints(db, waid, 100, "test award");
+  const tracks = await training.createTrainingTrack(db, waid, "weapon", "Firearms");
+  await assert.rejects(() => training.allocateToTrainingTrack(db, waid, tracks[0].id, 5000));
+});
+
+test("training tracks are append-only — there is no function that removes Points or deletes a track", () => {
+  assert.equal(training.removeTrainingTrack, undefined);
+  assert.equal(training.deallocateFromTrainingTrack, undefined);
+});
+
+test("conqueror's coating track requires the character to actually have Conqueror's Haki", async () => {
+  const db = makeTestDb();
+  const waid = "no-conq-1";
+  await training.ensureCharacter(db, waid, "No Conqueror");
+  await assert.rejects(() => training.createTrainingTrack(db, waid, "conquerors", null));
+});
+
+test("conqueror's coating unlocks A-class only once BOTH Points and Rank Tier gates clear", async () => {
+  const db = makeTestDb();
+  const waid = "conq-1";
+  await training.ensureCharacter(db, waid, "Conqueror");
+  await db.run("UPDATE characters SET has_conquerors_haki = ? WHERE waid = ?", [true, waid]);
+  await training.awardPoints(db, waid, 20000, "test award");
+  const tracks = await training.createTrainingTrack(db, waid, "conquerors", null);
+
+  // Enough Points, but still Tier 1 — should NOT unlock (Tier 5 required)
+  const stillLocked = await training.allocateToTrainingTrack(db, waid, tracks[0].id, 15000);
+  assert.equal(stillLocked[0].progress.currentLevel, "Locked");
+  assert.equal(stillLocked[0].progress.blockedByTier, 5);
+
+  // Now bump Rank Tier to 5 and re-check
+  await db.run("UPDATE characters SET rank_xp = 2000000 WHERE waid = ?", [waid]);
+  const tracksNow = await training.listTrainingTracks(db, waid);
+  assert.equal(tracksNow[0].progress.currentLevel, "A-class");
+});
+
+// ---------- Stat Pool self-allocation ----------
+
+test("stat pool self-allocation is additive and capped at the Tier's pool", async () => {
+  const db = makeTestDb();
+  const waid = "stat-1";
+  await training.ensureCharacter(db, waid, "Stat Guy"); // Tier 1, pool of 15
+  await training.allocateStatPool(db, waid, { str: 10, def: 5, spd: 0 });
+  let char = await training.getCharacter(db, waid);
+  assert.equal(char.str_alloc, 10);
+  assert.equal(char.def_alloc, 5);
+
+  // A second call ADDS on top rather than overwriting
+  await training.allocateStatPool(db, waid, { str: 0, def: 0, spd: 0 }).catch(() => {}); // no-op, all zero
+  await assert.rejects(() => training.allocateStatPool(db, waid, { str: 1, def: 0, spd: 0 })); // 15/15 already allocated
+  char = await training.getCharacter(db, waid);
+  assert.equal(char.str_alloc + char.def_alloc + char.spd_alloc, 15);
+});
+
+test("stat pool self-allocation has no removal function — additions are permanent", () => {
+  assert.equal(training.deallocateStatPool, undefined);
+});
+
+// ---------- Money (Berries) ----------
+
+test("mod can award Berries and the balance only ever goes up", async () => {
+  const db = makeTestDb();
+  const waid = "rich-1";
+  await training.ensureCharacter(db, waid, "Rich Guy");
+  await training.awardMoney(db, waid, 8000, "real battle, Tier 1");
+  await training.awardMoney(db, waid, 5000, "bounty payout");
+  const char = await training.getCharacter(db, waid);
+  assert.equal(char.money_banked, 13000);
+});

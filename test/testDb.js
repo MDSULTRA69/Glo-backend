@@ -22,6 +22,14 @@ function makeTestDb() {
       has_devil_fruit INTEGER NOT NULL DEFAULT 0, devil_fruit_name TEXT,
       has_conquerors_haki INTEGER NOT NULL DEFAULT 0,
       unique_stat TEXT, unique_bonus INTEGER NOT NULL DEFAULT 0,
+      character_password TEXT,
+      money_banked INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE training_tracks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      waid TEXT NOT NULL, track_type TEXT NOT NULL, track_name TEXT,
+      points_banked INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE deck_slots (
